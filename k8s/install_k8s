@@ -1,0 +1,122 @@
+1.关闭防火墙
+setenforce 0
+systemctl stop firewalld
+systemctl disable firewalld
+2.安装ntp同步时间
+yum -y install ntp
+ntpdate pool.ntp.org
+systemctl start ntpd
+systemctl enable ntpd
+2.Kubernetes Master安装与配置
+yum install kubernetes-master etcd flannel -y
+修改/etc/etcd/etcd.conf配置文件的ip地址为master地址
+cat>/etc/etcd/etcd.conf<<EOF
+# [member]
+ETCD_NAME=etcd1
+ETCD_DATA_DIR="/data/etcd"
+#ETCD_WAL_DIR=""
+#ETCD_SNAPSHOT_COUNT="10000"
+#ETCD_HEARTBEAT_INTERVAL="100"
+#ETCD_ELECTION_TIMEOUT="1000"
+ETCD_LISTEN_PEER_URLS="http://192.168.1.145:2380"
+ETCD_LISTEN_CLIENT_URLS="http://192.168.1.145:2379,http://127.0.0.1:2379"
+ETCD_MAX_SNAPSHOTS="5"
+#ETCD_MAX_WALS="5"
+#ETCD_CORS=""
+#
+#[cluster]
+ETCD_INITIAL_ADVERTISE_PEER_URLS="http://192.168.1.145:2380"
+# if you use different ETCD_NAME (e.g. test), set ETCD_INITIAL_CLUSTER value for this name, i.e. "test=http://..."
+ETCD_INITIAL_CLUSTER="etcd1=http://192.168.1.145:2380"
+#ETCD_INITIAL_CLUSTER_STATE="new"
+#ETCD_INITIAL_CLUSTER_TOKEN="etcd-cluster"
+ETCD_ADVERTISE_CLIENT_URLS="http://192.168.1.145:2379"
+#ETCD_DISCOVERY=""
+#ETCD_DISCOVERY_SRV=""
+#ETCD_DISCOVERY_FALLBACK="proxy"
+#ETCD_DISCOVERY_PROXY=""
+#
+#[proxy]
+#ETCD_PROXY="off"
+#ETCD_PROXY_FAILURE_WAIT="5000"
+#ETCD_PROXY_REFRESH_INTERVAL="30000"
+#ETCD_PROXY_DIAL_TIMEOUT="1000"
+#ETCD_PROXY_WRITE_TIMEOUT="5000"
+#ETCD_PROXY_READ_TIMEOUT="0"
+#
+#[security]
+#ETCD_CERT_FILE=""
+#ETCD_KEY_FILE=""
+#ETCD_CLIENT_CERT_AUTH="false"
+#ETCD_TRUSTED_CA_FILE=""
+#ETCD_PEER_CERT_FILE=""
+#ETCD_PEER_KEY_FILE=""
+#ETCD_PEER_CLIENT_CERT_AUTH="false"
+#ETCD_PEER_TRUSTED_CA_FILE=""
+#
+#[logging]
+#ETCD_DEBUG="false"
+# examples for -log-package-levels etcdserver=WARNING,security=DEBUG
+#ETCD_LOG_PACKAGE_LEVELS=""
+EOF
+
+mkdir  -p  /data/etcd/;chmod 757 -R /data/etcd/
+systemctl restart etcd.service
+启动etcd服务，执行命令：systemctl restart etcd.service
+修改/etc/kubernetes/config配置文件
+cat>/etc/kubernetes/config<<EOF
+# kubernetes  system config
+# The following values are used to configure various aspects of all
+# kubernetes i, including
+#   kube-apiserver.service
+#   kube-controller-manager.service
+#   kube-scheduler.service
+#   kubelet.service
+#   kube-proxy.service
+# logging to stderr means we get it in the systemd journal
+KUBE_LOGTOSTDERR="--logtostderr=true"
+# journal message level, 0 is debug
+KUBE_LOG_LEVEL="--v=0"
+# Should this cluster be allowed to run privileged docker containers
+KUBE_ALLOW_PRIV="--allow-privileged=false"
+# How the controller-manager, scheduler, and proxy find the apiserver
+KUBE_MASTER="--master=http://192.168.1.145:8080"
+EOF
+修改/etc/kubernetes/apiserver配置文件
+cat>/etc/kubernetes/apiserver<<EOF
+# kubernetes system config
+# The following values are used to configure the kube-apiserver
+# The address on the local server to listen to.
+KUBE_API_ADDRESS="--insecure-bind-address=0.0.0.0"
+# The port on the local server to listen on.
+KUBE_API_PORT="--port=8080"
+# Port minions listen on
+KUBELET_PORT="--kubelet-port=10250"
+# Comma separated list of nodes in the etcd cluster
+KUBE_ETCD_SERVERS="--etcd-servers=http://192.168.1.145:2379,http://192.168.1.146:2379,http://192.168.0.143:2379"
+# Address range to use for i
+KUBE_SERVICE_ADDRESSES="--service-cluster-ip-range=10.254.0.0/16"
+# default admission control policies
+#KUBE_ADMISSION_CONTROL="--admission-control=NamespaceLifecycle,NamespaceExists,LimitRanger,SecurityContextDeny,ServiceAccount,ResourceQuota"
+KUBE_ADMISSION_CONTROL="--admission_control=NamespaceLifecycle,NamespaceExists,LimitRanger,ResourceQuota"
+# Add your own!
+KUBE_API_ARGS=""
+EOF
+
+启动Kubernetes Master节点上的etcd, apiserver, controller-manager和scheduler进程及状态：
+for  I  in  etcd  kube-apiserver  kube-controller-manager kube-scheduler;  do
+systemctl restart  $I
+systemctl enable  $I
+systemctl status   $I
+done
+
+
+4.Kubernetes Node安装配置
+yum install kubernetes-node etcd docker flannel *rhsm* -y
+
+for  I  in  kube-proxy  kubelet  docker
+do
+systemctl  restart  $I
+systemctl  enable  $I
+done
+iptables -P FORWARD ACCEPT
