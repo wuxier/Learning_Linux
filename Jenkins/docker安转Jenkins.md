@@ -9,7 +9,7 @@ docker pull jenkins/jenkins:lts
 ```
 ## 3. 启动Jenkins容器
 ```shell
-mkdier -p /date/jenkins
+mkdir -p /date/jenkins
 chown -R 1000.1000 /date/jenkins
 docker run -d -p 8080:8080 -p 50000:50000 -v /date/jenkins:/var/jenkins_home/ --name jenkins --privileged=true jenkins/jenkins:lts
 ```
